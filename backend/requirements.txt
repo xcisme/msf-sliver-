@@ -1,0 +1,19 @@
+# FastAPI核心
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# 认证与安全
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+pydantic-settings==2.3.0
+
+# HTTP客户端
+requests==2.32.0
+
+# MSF RPC客户端（使用pymetasploit3）
+pymetasploit3==1.0.5
+
+# 数据序列化
+protobuf==4.25.0
