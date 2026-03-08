@@ -70,6 +70,53 @@ async def get_sessions(current_user: str = Depends(get_current_user)) -> Dict[st
         )
 
 
+@router.delete("/session/{session_id}")
+async def stop_session(
+    session_id: int,
+    current_user: str = Depends(deps.get_current_user)
+) -> Dict[str, Any]:
+    """Stop a specific MSF session.
+
+    Requires JWT authentication.
+
+    Args:
+        session_id: The ID of the session to stop
+        current_user: Authenticated user from token
+
+    Returns:
+        Result of stopping the session
+
+    Raises:
+        HTTPException: If session doesn't exist or stopping fails
+    """
+    try:
+        msf_client = MsfClient(
+            host=settings.MSF_HOST,
+            port=settings.MSF_PORT,
+            password=settings.MSF_PASSWORD,
+            username=settings.MSF_USERNAME
+        )
+        result = msf_client.stop_session(session_id)
+
+        # 如果返回状态是 error，抛出 HTTP 异常
+        if result.get("status") == "error":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result.get("message", "Session not found")
+            )
+
+        return result
+    except HTTPException:
+        # 重新抛出 HTTP 异常
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stop session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to stop session: {str(e)}"
+        )
+
+
 @router.post("/exploit", response_model=dict)
 async def execute_exploit(
     request: dict,

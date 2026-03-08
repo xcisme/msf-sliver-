@@ -99,6 +99,52 @@ class MsfClient:
             logger.error(f"Failed to get sessions: {e}")
             raise
 
+    def stop_session(self, session_id: int) -> Dict[str, Any]:
+        """
+        Stop a specific MSF session.
+
+        Args:
+            session_id: The ID of the session to stop
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            # 确保连接
+            if self._client is None:
+                self.connect()
+
+            # 将 session_id 转换为字符串（MSF RPC 使用字符串类型的会话 ID）
+            str_id = str(session_id)
+
+            # 获取当前会话列表（字典，键为字符串类型的 ID）
+            sessions = self._client.sessions.list
+            logger.info(f"Current sessions: {list(sessions.keys())}")
+
+            # 检查会话是否存在
+            if str_id not in sessions:
+                logger.warning(f"Session ID {session_id} (string: {str_id}) does not exist")
+                return {
+                    "status": "error",
+                    "message": f"Session ID {session_id} does not exist"
+                }
+
+            # 停止指定会话
+            logger.info(f"Attempting to stop session {session_id} (string: {str_id})")
+            self._client.sessions.session(str_id).stop()
+
+            logger.info(f"Session {session_id} (string: {str_id}) stopped successfully")
+            return {
+                "status": "success",
+                "message": f"Session {session_id} stopped"
+            }
+        except Exception as e:
+            logger.error(f"Error stopping session {session_id}: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+
     def execute_exploit(self, module_path, options=None, payload=None) -> Dict[str, Any]:
         """
         执行exploit模块 - 严格遵循MSF的API规范

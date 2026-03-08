@@ -11,7 +11,7 @@ request.interceptors.request.use(
   (config) => {
     // 临时方案：优先使用 localStorage 中的 token，如果没有则使用默认 token
     // TODO: 上线前移除默认 token
-    const token = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3Mjg2NzYzN30.N405_6VY2HEiT8TwAWx8LTjgbFF2jhos3TeLyA-zIaA'
+    const token = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3Mjk1NTYxMn0.9SmhlLTRmKanT8FPtJT1b5oOPEw08H3I7p2OK5SbV0Q'
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -52,6 +52,10 @@ export const executeExploit = (data) => {
 
 export const checkBackendHealth = () => {
   return request.get('/api/health')
+}
+
+export const stopSession = (sessionId) => {
+  return request.delete(`/api/msf/session/${sessionId}`)
 }
 
 export default request
