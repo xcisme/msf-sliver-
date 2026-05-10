@@ -1,444 +1,426 @@
 <template>
-  <el-container class="layout-container">
-    <!-- 左侧导航 -->
-    <el-aside :width="isCollapse ? '64px' : '200px'" class="aside">
-      <el-menu
-        :default-active="activeIndex"
-        :collapse="isCollapse"
-        class="side-menu"
-        background-color="#1e1e1e"
-        text-color="#ffffff"
-        active-text-color="#ffffff"
-      >
-        <el-menu-item index="1">
-          <el-icon><Aim /></el-icon>
-          <template #title>MSF工具</template>
-        </el-menu-item>
-        <el-menu-item index="2">
-          <el-icon><Connection /></el-icon>
-          <template #title>Sliver工具</template>
-        </el-menu-item>
-        <el-menu-item index="3">
-          <el-icon><Link /></el-icon>
-          <template #title>跨工具协同</template>
-        </el-menu-item>
-        <el-menu-item index="4">
-          <el-icon><Document /></el-icon>
-          <template #title>审计日志</template>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
+  <div class="dashboard" v-loading="loading">
+    <!-- 欢迎语 -->
+    <div class="welcome-section">
+      <h2>欢迎回来，管理员</h2>
+      <el-button text @click="refreshData">
+        <el-icon><Refresh /></el-icon>
+        刷新
+      </el-button>
+    </div>
 
-    <!-- 右侧内容区 -->
-    <el-container>
-      <!-- 顶部状态栏 -->
-      <el-header class="header">
-        <div class="header-left">
-          <el-space>
-            <el-button
-              type="primary"
-              link
-              @click="isCollapse = !isCollapse"
-              class="collapse-btn"
-            >
-              <el-icon>
-                <Fold v-if="!isCollapse" />
-                <Expand v-else />
-              </el-icon>
-            </el-button>
-            <span class="welcome-text">欢迎回来，管理员</span>
-          </el-space>
+    <!-- 统计卡片 -->
+    <div class="stats-row">
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <div class="stat-icon msf-icon">
+            <el-icon><Aim /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ msfSessionCount }}</div>
+            <div class="stat-label">MSF会话数</div>
+          </div>
         </div>
-        <div class="header-right">
-          <span class="status-item">
-            <span :class="['status-dot', backendStatus]"></span>
-            <template v-if="backendStatus === 'checking'">
-              正在检测...
-            </template>
-            <template v-else-if="backendStatus === 'connected'">
-              后端已连接
-            </template>
-            <template v-else>
-              后端未连接
-            </template>
-          </span>
-          <span class="status-item">
-            <span :class="['status-dot', msfStatus]"></span>
-            <template v-if="msfStatus === 'checking'">
-              正在检测...
-            </template>
-            <template v-else-if="msfStatus === 'connected'">
-              MSF已连接 ({{ msfSessionsCount }}个会话)
-            </template>
-            <template v-else>
-              MSF未连接
-            </template>
-          </span>
-          <el-button
-            type="primary"
-            link
-            :loading="isChecking"
-            @click="handleCheckConnection"
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <div class="stat-icon sliver-icon">
+            <el-icon><Connection /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ sliverSessionCount }}</div>
+            <div class="stat-label">Sliver会话数</div>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <div class="stat-icon status-icon">
+            <el-icon><CircleCheck /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">
+              <span :class="['status-text', systemStatus === 'normal' ? 'normal' : 'abnormal']">
+                {{ systemStatus === 'normal' ? '正常' : '异常' }}
+              </span>
+            </div>
+            <div class="stat-label">系统状态</div>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- 内容区域 -->
+    <div class="content-row">
+      <!-- 最近操作日志 -->
+      <el-card class="log-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <span>最近操作日志</span>
+          </div>
+        </template>
+        <el-timeline v-if="recentLogs.length > 0">
+          <el-timeline-item
+            v-for="(log, index) in recentLogs"
+            :key="index"
+            :timestamp="formatTime(log.time || log.created_at)"
+            :color="getLogColor(log.result)"
           >
-            {{ isChecking ? '检测中...' : '刷新状态' }}
-          </el-button>
-          <el-button type="primary" link>退出登录</el-button>
+            {{ log.action }}：{{ log.target }}
+          </el-timeline-item>
+        </el-timeline>
+        <div v-else class="empty-tip">暂无操作日志</div>
+      </el-card>
+
+      <!-- 工具链接状态 -->
+      <el-card class="link-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <span>工具链接状态</span>
+          </div>
+        </template>
+        <div class="link-list">
+          <div class="link-item" v-for="(item, key) in linkStatus" :key="key">
+            <div class="link-info">
+              <span :class="['status-dot', getLinkStatusClass(item.status)]"></span>
+              <span class="link-name">{{ getLinkName(key) }}</span>
+            </div>
+            <div class="link-status">
+              {{ getLinkDisplay(item) }}
+            </div>
+          </div>
         </div>
-      </el-header>
-
-      <!-- 主内容区 -->
-      <el-main class="main">
-        <div class="grid-container">
-          <!-- 欢迎卡片 -->
-          <el-card class="welcome-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <span>欢迎使用C2协同工具</span>
-              </div>
-            </template>
-            <div class="card-content">
-              <p class="intro-text">
-                本系统是一个综合性的C2协同工具平台，集成Metasploit Framework和Sliver两大渗透测试框架，
-                提供统一的操作界面和跨工具协同能力。您可以通过左侧导航菜单访问各项功能模块，
-                实现漏洞利用、会话管理、横向移动等渗透测试操作。
-              </p>
-              <div class="action-buttons">
-                <el-button type="primary">运行Exploit</el-button>
-                <el-button>查看会话</el-button>
-              </div>
-            </div>
-          </el-card>
-
-          <!-- 会话列表卡片 -->
-          <el-card class="sessions-card" shadow="hover" v-if="backendStatus === 'connected' && msfStatus === 'connected'">
-            <template #header>
-              <div class="card-header">
-                <span>当前会话 ({{ sessions.length }}个)</span>
-              </div>
-            </template>
-            <div class="table-wrapper">
-              <el-empty v-if="!loadingSessions && sessions.length === 0" description="暂无会话" />
-              <div v-else v-loading="loadingSessions" element-loading-background="#1a1a1a">
-                <el-table :data="sessions">
-                  <el-table-column prop="id" label="会话ID" width="100" />
-                  <el-table-column prop="type" label="类型" width="80" />
-                  <el-table-column prop="info" label="目标信息" />
-                  <el-table-column label="操作" width="80" fixed="right">
-                    <template #default="{ row }">
-                      <el-button
-                        type="danger"
-                        size="small"
-                        :loading="stopLoading[row.id]"
-                        :disabled="stopLoading[row.id]"
-                        @click="handleStopSession(row)"
-                      >
-                        结束
-                      </el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </div>
-            </div>
-          </el-card>
-
-          <!-- 操作日志卡片 -->
-          <el-card class="logs-card" shadow="hover">
-            <template #header>
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <span style="font-weight: 500; color: #ffffff;">操作日志</span>
-                <el-button size="small" @click="clearLogs">清空</el-button>
-              </div>
-            </template>
-            <div class="timeline-wrapper">
-              <el-timeline v-if="logs.length > 0">
-                <el-timeline-item
-                  v-for="(log, index) in logs"
-                  :key="index"
-                  :timestamp="log.time"
-                  :color="log.result === 'success' ? '#67c23a' : '#f56c6c'"
-                >
-                  {{ log.action }}：{{ log.target }}
-                </el-timeline-item>
-              </el-timeline>
-              <el-empty v-else description="暂无日志" :image-size="60" />
-            </div>
-          </el-card>
-        </div>
-      </el-main>
-    </el-container>
-  </el-container>
+      </el-card>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Aim, Connection, Link, Document, Expand, Fold } from '@element-plus/icons-vue'
-import { checkBackendHealth, testMsfConnection, getSessions, stopSession } from '../api'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { Aim, Connection, CircleCheck, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { getMsfSessions, getSliverSessions, getRecentLogs, getLinkStatus } from '../api'
 
-const activeIndex = ref('1')
-const backendStatus = ref('checking')
-const msfStatus = ref('checking')
-const msfSessionsCount = ref(0)
-const isChecking = ref(false)
-const sessions = ref([])
-const loadingSessions = ref(false)
-const isCollapse = ref(false)
-const stopLoading = ref({})
-const logs = ref([])
+// 统计数据
+const msfSessionCount = ref(0)
+const sliverSessionCount = ref(0)
+const systemStatus = ref('normal')
 
-const addLog = (action, target, result) => {
-  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-  logs.value.push({ time, action, target, result })
+// 最近日志
+const recentLogs = ref([])
 
-  // 限制日志最大条数为50条
-  if (logs.value.length > 50) {
-    logs.value.shift()
-  }
-}
+// 工具链接状态
+const linkStatus = ref({})
 
-const checkBackend = async () => {
+// 加载状态
+const loading = ref(false)
+
+// 获取MSF会话数
+const fetchMsfSessions = async () => {
   try {
-    await checkBackendHealth()
-
-    const wasDisconnected = backendStatus.value === 'disconnected'
-    backendStatus.value = 'connected'
-
-    if (wasDisconnected) {
-      ElMessage.success('后端服务已恢复连接')
-    }
-
-    // 后端连接成功后检测MSF
-    await checkMsf()
-
+    const res = await getMsfSessions()
+    msfSessionCount.value = res.sessions?.length || res.data?.length || 0
   } catch (error) {
-    console.error('后端连接失败:', error)
-
-    const wasConnected = backendStatus.value === 'connected'
-    backendStatus.value = 'disconnected'
-    msfStatus.value = 'disconnected'
-    msfSessionsCount.value = 0
-    sessions.value = []
-
-    if (wasConnected) {
-      ElMessage.error('后端服务连接断开')
-    }
+    console.error('获取MSF会话失败:', error)
+    msfSessionCount.value = 0
   }
 }
 
-const checkMsf = async () => {
-  // 如果后端没连接，不检测MSF
-  if (backendStatus.value !== 'connected') {
-    msfStatus.value = 'disconnected'
-    return
-  }
-
+// 获取Sliver会话数
+const fetchSliverSessions = async () => {
   try {
-    msfStatus.value = 'checking'
-    const res = await testMsfConnection()
+    const res = await getSliverSessions()
+    sliverSessionCount.value = res.sessions?.length || res.data?.length || 0
+  } catch (error) {
+    console.error('获取Sliver会话失败:', error)
+    sliverSessionCount.value = 0
+  }
+}
 
-    // 根据返回结果判断
-    if (res && res.status === 'success') {
-      msfStatus.value = 'connected'
-      msfSessionsCount.value = res.sessions_count || 0
-
-      // 连接成功后自动获取会话列表
-      await fetchSessions()
+// 获取最近日志
+const fetchRecentLogs = async () => {
+  try {
+    const res = await getRecentLogs(5)
+    console.log('Recent logs response:', res)
+    // 后端返回数组直接使用
+    if (Array.isArray(res)) {
+      recentLogs.value = res
+    } else if (res.logs) {
+      recentLogs.value = res.logs
+    } else if (res.data && Array.isArray(res.data)) {
+      recentLogs.value = res.data
+    } else if (res.data && res.data.items) {
+      recentLogs.value = res.data.items
     } else {
-      // API返回成功但status不是success
-      msfStatus.value = 'disconnected'
-      msfSessionsCount.value = 0
-      sessions.value = []
+      recentLogs.value = []
+      console.warn('Unexpected response format:', res)
     }
-
+    console.log('Processed recentLogs:', recentLogs.value)
   } catch (error) {
-    console.error('MSF连接失败:', error)
-
-    // 记录旧状态，用于判断是否需要弹窗
-    const wasConnected = msfStatus.value === 'connected'
-
-    msfStatus.value = 'disconnected'
-    msfSessionsCount.value = 0
-    sessions.value = []
-
-    // 只有从连接状态变为断开才弹窗
-    if (wasConnected) {
-      ElMessage.error('MSF连接已断开')
-    }
+    console.error('获取最近日志失败:', error)
+    recentLogs.value = []
   }
 }
 
-const fetchSessions = async () => {
-  if (backendStatus.value !== 'connected') {
-    return
-  }
-
-  loadingSessions.value = true
+// 获取工具链接状态
+const fetchLinkStatus = async () => {
   try {
-    const res = await getSessions()
-    sessions.value = res.sessions || []
-
-    // 能成功获取会话，说明MSF肯定在线
-    if (msfStatus.value !== 'connected') {
-      msfStatus.value = 'connected'
-    }
-
+    const res = await getLinkStatus()
+    linkStatus.value = res.data || res || {}
+    // 根据 MSF 连接状态判断系统状态
+    const msfStatus = linkStatus.value.msf_rpc?.status || linkStatus.value.msf?.status
+    systemStatus.value = (msfStatus === 'connected') ? 'normal' : 'abnormal'
   } catch (error) {
-    console.error('获取会话列表失败:', error)
+    console.error('获取工具链接状态失败:', error)
+    linkStatus.value = {}
+    systemStatus.value = 'abnormal'
+  }
+}
 
-    // 关键修复：获取会话失败，说明MSF已断开
-    // 只有当之前显示为connected时才需要更新状态并弹窗
-    if (msfStatus.value === 'connected') {
-      msfStatus.value = 'disconnected'
-      sessions.value = []
-      ElMessage.error('MSF连接已断开')
-    }
+// 加载所有数据
+const loadData = async () => {
+  loading.value = true
+  try {
+    await Promise.all([
+      fetchMsfSessions(),
+      fetchSliverSessions(),
+      fetchRecentLogs(),
+      fetchLinkStatus()
+    ])
   } finally {
-    loadingSessions.value = false
+    loading.value = false
   }
 }
 
-const handleCheckConnection = async () => {
-  if (isChecking.value) return
-
-  isChecking.value = true
-  backendStatus.value = 'checking'
-  msfStatus.value = 'checking'
-
-  await checkBackend()
-
-  isChecking.value = false
+// 刷新数据
+const refreshData = async () => {
+  await loadData()
+  ElMessage.success('数据已刷新')
 }
 
-const handleStopSession = async (session) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要结束会话 [${session.id}] 吗？`,
-      '确认结束会话',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
+// 获取日志颜色
+const getLogColor = (result) => {
+  if (result === 'success' || result === '成功') return '#67c23a'
+  if (result === 'failed' || result === '失败') return '#f56c6c'
+  return '#909399'  // unknown/pending
+}
 
-    // 设置加载状态
-    stopLoading.value[session.id] = true
-
-    await stopSession(session.id)
-
-    ElMessage.success(`会话 ${session.id} 已结束`)
-
-    // 记录日志
-    addLog('结束会话', `会话 ${session.id}`, 'success')
-
-    // 刷新会话列表
-    await fetchSessions()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('结束会话失败:', error)
-      ElMessage.error('结束会话失败')
-
-      // 记录失败日志
-      addLog('结束会话', `会话 ${session.id}`, 'error')
+// 格式化时间
+const formatTime = (time) => {
+  if (!time) return ''
+  if (typeof time === 'string') {
+    try {
+      const date = new Date(time)
+      return date.toLocaleString('zh-CN')
+    } catch {
+      return time
     }
-  } finally {
-    // 移除加载状态
-    stopLoading.value[session.id] = false
   }
+  return String(time)
 }
 
-const executeExploitHandler = async (exploitModule) => {
-  if (backendStatus.value !== 'connected' || msfStatus.value !== 'connected') {
-    ElMessage.error('MSF未连接，无法执行Exploit')
-    return
-  }
-
-  try {
-    ElMessage.info('开始执行Exploit...')
-    // TODO: 调用实际的 executeExploit API
-    // await executeExploit({ module: exploitModule })
-
-    // 模拟执行成功
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    ElMessage.success('Exploit执行成功')
-    addLog('执行Exploit', exploitModule, 'success')
-
-    // 刷新会话列表
-    await fetchSessions()
-  } catch (error) {
-    console.error('执行Exploit失败:', error)
-    ElMessage.error('Exploit执行失败')
-    addLog('执行Exploit', exploitModule, 'error')
-  }
+// 获取链接状态样式
+const getLinkStatusClass = (status) => {
+  if (status === 'connected') return 'connected'
+  return 'disconnected'
 }
 
-const clearLogs = () => {
-  logs.value = []
+// 获取链接名称
+const getLinkName = (key) => {
+  const map = {
+    msf_rpc: 'MSF RPC',
+    msf: 'MSF RPC',
+    sliver_grpc: 'Sliver gRPC',
+    sliver: 'Sliver gRPC',
+    ip_pool: 'IP池轮换',
+    ip_pool_status: 'IP池轮换'
+  }
+  return map[key] || key
+}
+
+// 获取链接显示信息
+const getLinkDisplay = (item) => {
+  if (item.status === 'connected') {
+    return item.port ? `已连接 (端口${item.port})` : '已连接'
+  }
+  if (item.status === 'not_configured') {
+    return '未配置'
+  }
+  return '未连接'
 }
 
 onMounted(() => {
-  handleCheckConnection()
+  loadData()
 })
 </script>
 
 <style scoped>
-.layout-container {
-  height: 100vh;
-  overflow: hidden;
-}
-
-.aside {
-  background-color: #1e1e1e;
-  overflow: hidden;
-  transition: width 0.3s ease;
-}
-
-.side-menu {
-  border-right: none;
+.dashboard {
+  width: 100%;
   height: 100%;
 }
 
-.side-menu .el-menu-item.is-active {
-  background-color: #333333 !important;
-}
-
-.header {
+.welcome-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #252525;
-  border-bottom: 1px solid #333333;
-  padding: 0 20px;
-  height: 60px;
+  margin-bottom: 24px;
 }
 
-.header-left {
+.welcome-section h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0;
+}
+
+/* 统计卡片行 */
+.stats-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  flex: 1;
+  border-radius: 16px;
+}
+
+.stat-card :deep(.el-card__body) {
+  padding: 20px;
+}
+
+.stat-content {
   display: flex;
   align-items: center;
+  gap: 16px;
 }
 
-.collapse-btn {
-  padding: 8px;
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
 }
 
-.welcome-text {
-  color: #ffffff;
+.msf-icon {
+  background-color: #e6f7ff;
+  color: #1890ff;
+}
+
+.sliver-icon {
+  background-color: #f6ffed;
+  color: #52c41a;
+}
+
+.status-icon {
+  background-color: #fff7e6;
+  color: #fa8c16;
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.2;
+}
+
+.stat-label {
   font-size: 14px;
+  color: #909399;
+  margin-top: 4px;
 }
 
-.header-right {
+.status-text.normal {
+  color: #67c23a;
+}
+
+.status-text.abnormal {
+  color: #f56c6c;
+}
+
+/* 内容区域 */
+.content-row {
   display: flex;
-  align-items: center;
   gap: 20px;
 }
 
-.status-item {
+.log-card,
+.link-card {
+  flex: 1;
+  border-radius: 16px;
+}
+
+.log-card :deep(.el-card__header),
+.link-card :deep(.el-card__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.card-header {
+  font-size: 16px;
+  font-weight: 500;
+  color: #303133;
+}
+
+/* 日志样式 */
+.log-card :deep(.el-timeline) {
+  padding: 0;
+}
+
+.log-card :deep(.el-timeline-item__content) {
+  color: #606266;
+}
+
+.log-card :deep(.el-timeline-item__timestamp) {
+  color: #909399;
+}
+
+.empty-tip {
+  text-align: center;
+  color: #909399;
+  padding: 40px;
+}
+
+/* 工具链接样式 */
+.link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.link-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #f5f7fa;
+  border-radius: 8px;
+}
+
+.link-info {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #a0a0a0;
+  gap: 10px;
+}
+
+.link-name {
   font-size: 14px;
+  color: #303133;
+}
+
+.link-status {
+  font-size: 14px;
+  color: #909399;
 }
 
 .status-dot {
@@ -448,200 +430,11 @@ onMounted(() => {
   display: inline-block;
 }
 
-.status-dot.green {
-  background-color: #67c23a;
-}
-
 .status-dot.connected {
   background-color: #67c23a;
 }
 
 .status-dot.disconnected {
   background-color: #f56c6c;
-}
-
-.status-dot.checking {
-  background-color: #e6a23c;
-}
-
-.main {
-  background-color: #1a1a1a;
-  padding: 20px;
-  overflow: hidden;
-  height: calc(100vh - 60px);
-}
-
-.grid-container {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 20px;
-  height: 100%;
-}
-
-.welcome-card {
-  background-color: #252525;
-  border: 1px solid #333333;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.welcome-card :deep(.el-card__header) {
-  background-color: #2a2a2a;
-  border-bottom: 1px solid #333333;
-  padding: 15px 20px;
-  flex-shrink: 0;
-}
-
-.welcome-card :deep(.el-card__body) {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.sessions-card {
-  background-color: #252525;
-  border: 1px solid #333333;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  grid-column: 2;
-  grid-row: 1 / 3;
-}
-
-.sessions-card :deep(.el-card__header) {
-  background-color: #2a2a2a;
-  border-bottom: 1px solid #333333;
-  padding: 15px 20px;
-  flex-shrink: 0;
-}
-
-.sessions-card :deep(.el-card__body) {
-  flex: 1;
-  overflow: hidden;
-  padding: 0;
-}
-
-.table-wrapper {
-  height: 100%;
-  overflow-y: auto;
-  padding: 10px;
-}
-
-.sessions-card :deep(.el-table) {
-  background-color: #252525;
-}
-
-.sessions-card :deep(.el-table th) {
-  background-color: #2a2a2a;
-  color: #a0a0a0;
-}
-
-.sessions-card :deep(.el-table td) {
-  border-color: #333333;
-  color: #e0e0e0;
-}
-
-.sessions-card :deep(.el-table tr:hover > td) {
-  background-color: #2d2d2d !important;
-}
-
-.sessions-card :deep(.el-empty) {
-  padding: 40px 0;
-}
-
-.sessions-card :deep(.el-empty__description p) {
-  color: #666;
-}
-
-.logs-card {
-  background-color: #252525;
-  border: 1px solid #333333;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.logs-card :deep(.el-card__header) {
-  background-color: #2a2a2a;
-  border-bottom: 1px solid #333333;
-  padding: 15px 20px;
-  flex-shrink: 0;
-}
-
-.logs-card :deep(.el-card__body) {
-  flex: 1;
-  overflow: hidden;
-  padding: 0;
-}
-
-.timeline-wrapper {
-  height: 100%;
-  overflow-y: auto;
-  padding: 15px;
-}
-
-.logs-card :deep(.el-timeline-item__content) {
-  color: #a0a0a0;
-}
-
-.logs-card :deep(.el-timeline-item__timestamp) {
-  color: #666;
-}
-
-.logs-card :deep(.el-timeline) {
-  padding: 0;
-}
-
-.card-header {
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 600;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-content {
-  color: #a0a0a0;
-}
-
-.intro-text {
-  line-height: 1.8;
-  margin-bottom: 20px;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 12px;
-}
-
-/* 自定义滚动条样式 */
-.table-wrapper::-webkit-scrollbar,
-.timeline-wrapper::-webkit-scrollbar,
-.welcome-card :deep(.el-card__body)::-webkit-scrollbar {
-  width: 6px;
-}
-
-.table-wrapper::-webkit-scrollbar-track,
-.timeline-wrapper::-webkit-scrollbar-track,
-.welcome-card :deep(.el-card__body)::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
-
-.table-wrapper::-webkit-scrollbar-thumb,
-.timeline-wrapper::-webkit-scrollbar-thumb,
-.welcome-card :deep(.el-card__body)::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
-}
-
-.table-wrapper::-webkit-scrollbar-thumb:hover,
-.timeline-wrapper::-webkit-scrollbar-thumb:hover,
-.welcome-card :deep(.el-card__body)::-webkit-scrollbar-thumb:hover {
-  background: #444;
 }
 </style>

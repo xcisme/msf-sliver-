@@ -1,0 +1,43 @@
+"""Pydantic models for Sliver API."""
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
+
+class SliverSession(BaseModel):
+    """Sliver session model."""
+    id: str
+    host: str
+    user: str
+    platform: str
+    created_at: datetime
+    last_seen: datetime
+    status: str  # active, closed
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CommandRequest(BaseModel):
+    """Command execution request model."""
+    command: str
+
+
+class CommandResponse(BaseModel):
+    """Command execution response model."""
+    output: str
+
+
+class ImplantGenerateRequest(BaseModel):
+    """Implant generation request model."""
+    lhost: str
+    lport: int
+    protocol: str = "tcp"
+    platform: str = "windows/amd64"
+    format: str = "exe"
+
+
+class ImplantGenerateResponse(BaseModel):
+    """Implant generation response model."""
+    message: str
+    download_url: Optional[str] = None

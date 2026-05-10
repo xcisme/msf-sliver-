@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, msf
+from app.api import auth, msf, dashboard, tasks, sliver, coordination, advanced, logs
 
 # Create FastAPI application instance
 app = FastAPI(
@@ -38,6 +38,12 @@ async def health_check():
 # Register routers
 app.include_router(auth.router)
 app.include_router(msf.router)
+app.include_router(dashboard.router)
+app.include_router(tasks.router)
+app.include_router(sliver.router)
+app.include_router(coordination.router)
+app.include_router(advanced.router)
+app.include_router(logs.router)
 
 
 @app.get("/")

@@ -2,8 +2,19 @@
 </script>
 
 <template>
-  <router-view />
+  <router-view v-slot="{ Component }">
+    <component :is="Component" />
+  </router-view>
 </template>
 
-<style scoped>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Microsoft YaHei', 'Source Han Sans CN', sans-serif;
+}
 </style>

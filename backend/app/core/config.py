@@ -13,10 +13,13 @@ class Config(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Database Configuration
+    DATABASE_URL: str = "mysql+pymysql://root:root@localhost:3306/c2_coordinator"
+
     # Metasploit Framework Configuration
-    MSF_HOST: str = "192.168.x.x"
+    MSF_HOST: str = "192.168.198.128"
     MSF_PORT: int = 55553
-    MSF_PASSWORD: str = ""
+    MSF_PASSWORD: str = "yourpassword"
     MSF_USERNAME: str = "msf"
 
     # Application Configuration
