@@ -174,7 +174,7 @@ const loadSessions = async () => {
   loading.value = true
   try {
     const res = await getSliverSessions()
-    sessions.value = res.sessions || []
+    sessions.value = Array.isArray(res) ? res : (res.sessions || [])
   } catch (error) {
     console.error('加载会话列表失败:', error)
     ElMessage.error('加载会话列表失败')

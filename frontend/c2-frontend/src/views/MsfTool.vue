@@ -253,10 +253,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getModules, getCompatiblePayloads, getModuleOptions, executeExploit, getSessions } from '../api'
+import { getModules, getCompatiblePayloads, getModuleOptions, executeExploit, getSessions, getTasks, createTask, deleteTaskApi, stopTask } from '../api'
 
 // 攻击任务列表（前端内存存储）
 const tasks = ref([])
@@ -325,8 +325,46 @@ const pollingIntervals = {}
 const POLLING_INTERVAL = 5000 // 5秒
 const POLLING_TIMEOUT = 600000 // 10分钟
 
-// 任务ID计数器
-let taskIdCounter = 1
+// 加载任务列表
+const loadTasks = async () => {
+  try {
+    const res = await getTasks()
+    // 后端返回 { total, items }
+    if (res.items) {
+      tasks.value = res.items.map(t => ({
+        id: t.id,
+        module: t.module_name,
+        payload: t.payload,
+        status: t.status === 'pending' ? '等待执行' : t.status === 'running' ? '执行中' : t.status === 'success' ? '成功' : t.status === 'failed' ? '失败' : t.status,
+        sessionId: t.session_id || '',
+        createdAt: new Date(t.created_at).getTime(),
+        createTime: t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : '',
+        options: t.options || {},
+        paramsStr: t.options ? Object.entries(t.options).filter(([_, v]) => v).map(([k, v]) => `${k}=${v}`).join(', ') : '',
+        output: t.output || ''
+      }))
+    } else if (Array.isArray(res)) {
+      tasks.value = res.map(t => ({
+        id: t.id,
+        module: t.module_name || t.module,
+        payload: t.payload,
+        status: t.status === 'pending' ? '等待执行' : t.status === 'running' ? '执行中' : t.status === 'success' ? '成功' : t.status === 'failed' ? '失败' : t.status,
+        sessionId: t.session_id || t.sessionId || '',
+        createdAt: new Date(t.created_at || t.createdAt).getTime(),
+        createTime: t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : (t.createTime || ''),
+        options: t.options || {},
+        paramsStr: typeof t.options === 'object' ? Object.entries(t.options || {}).filter(([_, v]) => v).map(([k, v]) => `${k}=${v}`).join(', ') : (t.paramsStr || ''),
+        output: t.output || ''
+      }))
+    }
+  } catch (error) {
+    console.error('加载任务列表失败:', error)
+  }
+}
+
+onMounted(() => {
+  loadTasks()
+})
 
 // 计算是否可以进入下一步
 const canGoNext = computed(() => {
@@ -607,51 +645,39 @@ const startAttack = async () => {
   // 调试日志
   console.log('发送攻击请求:', requestData)
 
-  // 生成新任务
-  const newTask = {
-    id: `T${taskIdCounter++}`,
-    module: fullModuleName.value,
-    payload: selectedPayload.value || '',
-    status: '执行中',
-    sessionId: '',
-    createdAt: Date.now(), // 时间戳，用于超时判断
-    createTime: new Date().toLocaleString('zh-CN'),
-    options: { ...requestData.options }, // 存储监听参数
-    paramsStr: Object.entries(formOptions.value)
-      .filter(([_, v]) => v !== '' && v !== null && v !== undefined)
-      .map(([k, v]) => `${k}=${v}`)
-      .join(', '),
-    output: ''
-  }
-  tasks.value.unshift(newTask)
-
   try {
-    const res = await executeExploit(requestData)
+    // 通过后端 API 创建任务
+    const taskRes = await createTask({
+      module_name: fullModuleName.value,
+      payload: selectedPayload.value || null,
+      options: requestData.options
+    })
 
-    // 更新任务状态
-    const taskIndex = tasks.value.findIndex(t => t.id === newTask.id)
-    if (taskIndex !== -1) {
-      // 执行成功后，如果是监听器类型（multi/handler），状态设为"监听中"并启动轮询
-      if (fullModuleName.value.includes('multi/handler') || fullModuleName.value.includes('handler')) {
-        tasks.value[taskIndex].status = '监听中'
-        startTaskPolling(tasks.value[taskIndex])
-      } else if (res.success) {
-        tasks.value[taskIndex].status = '成功'
-        tasks.value[taskIndex].sessionId = res.session_id || ''
-        tasks.value[taskIndex].output = res.output || ''
-      } else {
-        tasks.value[taskIndex].status = '失败'
-        tasks.value[taskIndex].output = res.error || res.message || ''
-      }
+    // 使用后端返回的任务数据
+    const newTask = {
+      id: taskRes.id,
+      module: taskRes.module_name || fullModuleName.value,
+      payload: taskRes.payload || selectedPayload.value || '',
+      status: taskRes.status === 'pending' ? '等待执行' : taskRes.status === 'running' ? '执行中' : taskRes.status,
+      sessionId: taskRes.session_id || '',
+      createdAt: Date.now(),
+      createTime: new Date().toLocaleString('zh-CN'),
+      options: { ...requestData.options },
+      paramsStr: Object.entries(formOptions.value)
+        .filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', '),
+      output: taskRes.output || ''
+    }
+    tasks.value.unshift(newTask)
+
+    // 如果是监听器类型，启动轮询
+    if (fullModuleName.value.includes('multi/handler') || fullModuleName.value.includes('handler')) {
+      startTaskPolling(newTask)
     }
 
-    ElMessage.success(res.success ? '攻击成功' : '攻击失败')
+    ElMessage.success('攻击任务已创建')
   } catch (error) {
-    const taskIndex = tasks.value.findIndex(t => t.id === newTask.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].status = '失败'
-      tasks.value[taskIndex].output = error.message || '执行失败'
-    }
     ElMessage.error(error.response?.data?.detail || '攻击执行失败')
   } finally {
     attacking.value = false
@@ -673,15 +699,18 @@ const deleteTask = async (task) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    const index = tasks.value.findIndex(t => t.id === task.id)
-    if (index !== -1) {
-      // 停止该任务的轮询
-      stopTaskPolling(task.id)
-      tasks.value.splice(index, 1)
-      ElMessage.success('删除成功')
+    // 调用后端 API 删除
+    await deleteTaskApi(task.id)
+    // 停止该任务的轮询
+    stopTaskPolling(task.id)
+    // 从列表移除
+    tasks.value = tasks.value.filter(t => t.id !== task.id)
+    ElMessage.success('删除成功')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除任务失败:', error)
+      ElMessage.error(error.response?.data?.detail || '删除失败')
     }
-  } catch {
-    // 取消删除
   }
 }
 

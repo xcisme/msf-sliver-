@@ -115,7 +115,7 @@ async def generate_implant(
         action="GENERATE_IMPLANT",
         result="SUCCESS",
         target="sliver",
-        detail=f"生成Sliver implant: {req.implant_type} -> {req.output_name}",
+        detail=f"生成Sliver implant: {req.platform} {req.format} ({req.lhost}:{req.lport})",
         ip_address=None
     )
 

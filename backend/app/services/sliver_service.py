@@ -1,100 +1,100 @@
-"""Sliver service for mock implementation."""
+"""Sliver service - delegates to SliverClient for session management."""
 import logging
-from datetime import datetime
+import os
 from typing import List
 
+from app.core.config import settings
 from app.schemas.sliver import (
     SliverSession,
     CommandResponse,
-    ImplantGenerateResponse
+    ImplantGenerateResponse,
 )
+from app.utils.sliver_client import SliverClient
 
 logger = logging.getLogger(__name__)
 
 
 class SliverService:
-    """Mock Sliver service for development."""
+    """Sliver service using SliverClient (simulation or real gRPC)."""
+
+    def _get_client(self) -> SliverClient:
+        """Create a new SliverClient instance from current settings."""
+        return SliverClient(
+            host=settings.SLIVER_HOST,
+            port=settings.SLIVER_PORT,
+            enabled=settings.SLIVER_GRPC_ENABLED,
+            config_path=settings.SLIVER_CONFIG_PATH or None,
+            client_bin=os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "sliver-client.exe",
+            ),
+        )
 
     async def get_sessions(self) -> List[SliverSession]:
-        """Get Sliver sessions (mock data).
+        """Get all Sliver sessions.
 
         Returns:
-            List of mock Sliver sessions
+            List of SliverSession objects.
         """
-        now = datetime.now()
-        return [
-            SliverSession(
-                id="abc123",
-                host="192.168.1.10",
-                user="root",
-                platform="linux",
-                created_at=now,
-                last_seen=now,
-                status="active"
-            ),
-            SliverSession(
-                id="def456",
-                host="10.0.0.5",
-                user="admin",
-                platform="windows",
-                created_at=now,
-                last_seen=now,
-                status="active"
-            )
-        ]
+        client = self._get_client()
+        sessions = client.get_sessions()
+
+        result = []
+        for s in sessions:
+            result.append(SliverSession(
+                id=s.get("id", ""),
+                host=s.get("host", ""),
+                user=s.get("user", ""),
+                platform=s.get("platform", "unknown"),
+                created_at=s.get("created_at"),
+                last_seen=s.get("last_seen"),
+                status=s.get("status", "active"),
+            ))
+        return result
 
     async def delete_session(self, session_id: str) -> bool:
-        """Delete a Sliver session (mock).
+        """Delete a Sliver session.
 
         Args:
-            session_id: Session ID to delete
+            session_id: Session ID to delete.
 
         Returns:
-            True if successful
+            True if successful, False otherwise.
         """
-        logger.info(f"Mock delete session: {session_id}")
-        return True
+        client = self._get_client()
+        result = client.delete_session(session_id)
+        logger.info("Delete session %s: %s", session_id, result)
+        return result.get("success", False)
 
     async def execute_command(self, session_id: str, command: str) -> CommandResponse:
-        """Execute command on a session (mock).
+        """Execute a command on a Sliver session.
 
         Args:
-            session_id: Target session ID
-            command: Command to execute
+            session_id: Target session ID.
+            command: Command to execute.
 
         Returns:
-            Command output
+            CommandResponse with output.
         """
-        logger.info(f"Mock execute command on session {session_id}: {command}")
-
-        # Simple mock commands
-        if command == "whoami":
-            output = "root\n"
-        elif command == "pwd":
-            output = "/root\n"
-        elif command == "uname -a":
-            output = "Linux target 5.10.0-21-amd64 #1 SMP Debian x86_64 GNU/Linux\n"
-        elif command == "ip addr":
-            output = "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000\n    inet 127.0.0.1/8 scope host lo\n       valid_lft forever preferred_lft forever\n"
-        else:
-            output = f"Mock output: You executed command '{command}'\n"
-
-        return CommandResponse(output=output)
+        client = self._get_client()
+        result = client.execute_command(session_id, command)
+        return CommandResponse(output=result.get("output", ""))
 
     async def generate_implant(self, params: dict) -> ImplantGenerateResponse:
-        """Generate Sliver implant (mock).
+        """Generate a new Sliver implant.
 
         Args:
-            params: Implant generation parameters
+            params: Implant generation parameters (lhost, lport, platform, format, etc.)
 
         Returns:
-            Generation result with download URL
+            ImplantGenerateResponse with message and download URL.
         """
-        logger.info(f"Mock generate implant: {params}")
-
+        client = self._get_client()
+        result = client.generate_implant(params)
         return ImplantGenerateResponse(
-            message="Implant generated (mock)",
-            download_url=f"http://localhost:8000/downloads/sliver_implant_{params.get('lhost')}_{params.get('lport')}.exe"
+            message=result.get("message", "Implant generated"),
+            session_id=result.get("session_id"),
+            download_url=result.get("download_url"),
         )
 
 

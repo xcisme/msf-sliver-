@@ -11,8 +11,10 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
 from app.models.log import OperationLog
+from app.models.advanced import IpPool
 from app.schemas.dashboard import MsfSession, SliverSession, OperationLog as LogSchema, LinkStatus, LinkStatusInfo
 from app.utils.msf_client import MsfClient
+from app.services.sliver_service import sliver_service
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 logger = logging.getLogger(__name__)
@@ -73,10 +75,9 @@ async def get_sliver_sessions(
     Requires JWT authentication.
 
     Returns:
-        List of Sliver sessions (currently returns empty list)
+        List of Sliver sessions from Sliver service.
     """
-    # TODO: Implement actual Sliver client integration
-    return []
+    return await sliver_service.get_sessions()
 
 
 # ==================== Recent Logs ====================
@@ -143,13 +144,39 @@ async def get_link_status(
     except Exception as e:
         msf_message = str(e)
 
-    # Sliver (not configured)
+    # Sliver - test connection if configured
     sliver_status = "not_configured"
     sliver_message = "Sliver integration not configured"
+    sliver_host = settings.SLIVER_HOST
+    sliver_port = settings.SLIVER_PORT
 
-    # IP Pool (check if any IP pool exists - placeholder)
+    if settings.SLIVER_GRPC_ENABLED:
+        try:
+            from app.utils.sliver_client import SliverClient
+            client = SliverClient(
+                host=settings.SLIVER_HOST,
+                port=settings.SLIVER_PORT,
+                enabled=True,
+                config_path=settings.SLIVER_CONFIG_PATH or None,
+            )
+            result = client.test_connection()
+            if result.get("status") == "success":
+                sliver_status = "connected"
+                sessions_count = result.get("sessions_count", 0)
+                sliver_message = f"Sliver connected - {sessions_count} sessions ({result.get('mode', '')})"
+        except Exception as e:
+            sliver_message = str(e)
+
+    # IP Pool - check database
     ip_pool_status = "not_configured"
     ip_pool_message = "IP pool not configured"
+    try:
+        ip_count = db.query(IpPool).filter(IpPool.is_active == True).count()
+        if ip_count > 0:
+            ip_pool_status = "connected"
+            ip_pool_message = f"IP pool active ({ip_count} IPs)"
+    except Exception:
+        pass
 
     return LinkStatus(
         msf_rpc=LinkStatusInfo(
@@ -160,7 +187,9 @@ async def get_link_status(
         ),
         sliver_grpc=LinkStatusInfo(
             status=sliver_status,
-            message=sliver_message
+            message=sliver_message,
+            host=sliver_host,
+            port=sliver_port
         ),
         ip_pool=LinkStatusInfo(
             status=ip_pool_status,

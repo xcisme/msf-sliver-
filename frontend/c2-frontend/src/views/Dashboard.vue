@@ -132,7 +132,7 @@ const fetchMsfSessions = async () => {
 const fetchSliverSessions = async () => {
   try {
     const res = await getSliverSessions()
-    sliverSessionCount.value = res.sessions?.length || res.data?.length || 0
+    sliverSessionCount.value = Array.isArray(res) ? res.length : (res.sessions?.length || res.data?.length || 0)
   } catch (error) {
     console.error('获取Sliver会话失败:', error)
     sliverSessionCount.value = 0

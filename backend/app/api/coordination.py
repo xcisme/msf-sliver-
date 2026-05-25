@@ -19,9 +19,11 @@ from app.schemas.coordination import (
     ImplantRequest,
     ImplantResponse,
     SessionMapping as MappingSchema,
-    MappingResponse
+    MappingResponse,
+    ImplantConfig,
 )
 from app.utils.msf_client import MsfClient
+from app.utils.sliver_client import SliverClient
 from app.services.log_service import add_log
 
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
@@ -150,15 +152,46 @@ async def manual_implant(
     """
     logger.info(f"Manual implant request from user {current_user.id}: msf_session={request.msf_session_id}")
 
-    # Generate mock Sliver session ID
-    sliver_session_id = f"slv_{uuid.uuid4().hex[:8]}"
+    # 1. Determine target platform from implant config (default windows/amd64)
+    implant_config = request.implant_config or ImplantConfig(
+        lhost=settings.SLIVER_HOST,
+        lport=settings.SLIVER_PORT,
+        protocol="tcp",
+        platform="windows/amd64",
+        format="exe",
+    )
 
-    # Create mapping record
+    # 2. Use SliverClient to generate implant (fast: uses simulation mode)
+
+    sliver_client = SliverClient(
+        host=settings.SLIVER_HOST,
+        port=settings.SLIVER_PORT,
+        enabled=settings.SLIVER_GRPC_ENABLED,
+    )
+
+    # Generate implant (simulation mode creates a sliver_sessions record)
+    result = sliver_client.generate_implant({
+        "lhost": implant_config.lhost,
+        "lport": implant_config.lport,
+        "protocol": implant_config.protocol,
+        "platform": implant_config.platform,
+        "format": implant_config.format,
+        "target_host": target_host,
+    })
+
+    sliver_session_id = result.get("session_id")
+    if not sliver_session_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate implant: {result.get('message', 'Unknown error')}"
+        )
+
+    # 3. Create mapping record
     mapping = SessionMapping(
         user_id=current_user.id,
         msf_session_id=request.msf_session_id,
         sliver_session_id=sliver_session_id,
-        implant_config=request.implant_config.model_dump(),
+        implant_config=implant_config.model_dump(),
         status="active",
         implanted_at=datetime.utcnow()
     )
@@ -180,7 +213,7 @@ async def manual_implant(
     logger.info(f"Implant created: mapping {mapping.id}, sliver_session={sliver_session_id}")
 
     return ImplantResponse(
-        message="Implant sent (mock)",
+        message=f"Implant deployed to {target_host}: {sliver_session_id}",
         sliver_session_id=sliver_session_id
     )
 
@@ -197,36 +230,22 @@ async def get_session_mappings(
     Requires JWT authentication.
 
     Returns:
-        List of session mappings
+        List of session mappings from database.
     """
-    # Return mock data for demonstration
-    now = datetime.utcnow()
-    mock_mappings = [
-        MappingSchema(
-            id=1,
-            msf_session_id="msf_1",
-            sliver_session_id="slv_abc123",
-            implanted_at=now,
-            status="active"
-        ),
-        MappingSchema(
-            id=2,
-            msf_session_id="msf_2",
-            sliver_session_id="slv_def456",
-            implanted_at=now,
-            status="inactive"
-        )
-    ]
-
-    # Also check database for real mappings
-    db_mappings = db.query(SessionMapping).filter(
+    mappings = db.query(SessionMapping).filter(
         SessionMapping.user_id == current_user.id
-    ).all()
+    ).order_by(SessionMapping.created_at.desc()).all()
 
-    if db_mappings:
-        return db_mappings
-
-    return mock_mappings
+    result = []
+    for m in mappings:
+        result.append(MappingSchema(
+            id=m.id,
+            msf_session_id=m.msf_session_id,
+            sliver_session_id=m.sliver_session_id or "",
+            implanted_at=m.implanted_at or m.created_at,
+            status=m.status or "active",
+        ))
+    return result
 
 
 @router.delete("/mapping/{mapping_id}", response_model=MappingResponse)

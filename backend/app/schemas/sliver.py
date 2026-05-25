@@ -8,12 +8,12 @@ from pydantic import BaseModel, ConfigDict
 class SliverSession(BaseModel):
     """Sliver session model."""
     id: str
-    host: str
-    user: str
-    platform: str
-    created_at: datetime
-    last_seen: datetime
-    status: str  # active, closed
+    host: str = ""
+    user: str = ""
+    platform: str = ""
+    created_at: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    status: str = "active"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,4 +40,5 @@ class ImplantGenerateRequest(BaseModel):
 class ImplantGenerateResponse(BaseModel):
     """Implant generation response model."""
     message: str
+    session_id: Optional[str] = None
     download_url: Optional[str] = None

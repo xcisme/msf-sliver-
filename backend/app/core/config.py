@@ -22,6 +22,12 @@ class Config(BaseSettings):
     MSF_PASSWORD: str = "yourpassword"
     MSF_USERNAME: str = "msf"
 
+    # Sliver Configuration
+    SLIVER_HOST: str = "192.168.198.128"
+    SLIVER_PORT: int = 31337
+    SLIVER_GRPC_ENABLED: bool = False
+    SLIVER_CONFIG_PATH: str = ""
+
     # Application Configuration
     DEBUG: bool = True
 
